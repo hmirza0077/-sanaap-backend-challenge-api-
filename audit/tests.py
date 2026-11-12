@@ -5,7 +5,7 @@ from django.urls import reverse
 from rest_framework import status
 from rest_framework.test import APITestCase
 
-from accounts.models import User
+from user.models import User
 from audit.models import AuditLog
 from documents.models import Document
 

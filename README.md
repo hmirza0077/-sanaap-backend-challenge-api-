@@ -31,7 +31,7 @@ Stack: Django, DRF, PostgreSQL, Redis, MinIO, Celery, Django Channels, Daphne, N
 ```
 config/        settings, urls, asgi/wsgi, celery
 common/        upload path helper, pagination
-accounts/      user + role, login, user management, permissions, websocket auth
+user/      user + role, login, user management, permissions, websocket auth
 documents/     document model, serializer, filters, views, service, celery task, websocket
 audit/         audit log model, service, read-only API for admin
 nginx/         nginx config
@@ -92,20 +92,20 @@ API tests mock `apply_async` and check that the file is sent to the queue; the C
 All requests except login and refresh need the header `Authorization: Bearer <access-token>`.
 The access token is valid for 15 minutes, the refresh token for 1 day.
 
-| Method | URL | Who | Description |
-|--------|-----|-----|-------------|
-| POST | `/api/accounts/login/` | anyone | `{username, password}` → `{access, refresh}` |
-| POST | `/api/accounts/token/refresh/` | anyone | `{refresh}` → `{access}` |
-| GET | `/api/accounts/me/` | logged in | current user |
-| GET/POST | `/api/accounts/users/` | admin | list / create users (with `role`) |
-| GET/PATCH/DELETE | `/api/accounts/users/{id}/` | admin | view / change role / delete user |
-| GET | `/api/documents/` | all roles | list |
-| POST | `/api/documents/` | admin, editor | multipart: `title`, `file` |
-| GET | `/api/documents/{id}/` | all roles | details |
-| PUT/PATCH | `/api/documents/{id}/` | admin, editor | update |
-| DELETE | `/api/documents/{id}/` | admin | delete |
+| Method | URL                             | Who | Description |
+|--------|---------------------------------|-----|-------------|
+| POST | `/api/user/login/`              | anyone | `{username, password}` → `{access, refresh}` |
+| POST | `/api/user/token/refresh/`      | anyone | `{refresh}` → `{access}` |
+| GET | `/api/user/me/`                 | logged in | current user |
+| GET/POST | `/api/user/users/`              | admin | list / create users (with `role`) |
+| GET/PATCH/DELETE | `/api/user/users/{id}/`         | admin | view / change role / delete user |
+| GET | `/api/documents/`               | all roles | list |
+| POST | `/api/documents/`               | admin, editor | multipart: `title`, `file` |
+| GET | `/api/documents/{id}/`          | all roles | details |
+| PUT/PATCH | `/api/documents/{id}/`          | admin, editor | update |
+| DELETE | `/api/documents/{id}/`          | admin | delete |
 | GET | `/api/documents/{id}/download/` | all roles | download the file |
-| GET | `/api/audit-logs/` | admin | history (`?action=download`, `?document_id=5`) |
+| GET | `/api/audit-logs/`              | admin | history (`?action=download`, `?document_id=5`) |
 
 Document filters: `?title=invoice`, `?uploaded_by=ali_editor`, `?created_after=2026-01-01&created_before=2026-12-31`, `?page=2`, `?page_size=20`.
 
@@ -124,7 +124,7 @@ Browsers cannot send headers on WebSocket, so the JWT goes in the URL. Connectio
 
 ### Example
 ```bash
-TOKEN=$(curl -s -X POST localhost/api/accounts/login/ \
+TOKEN=$(curl -s -X POST localhost/api/user/login/ \
   -d "username=admin&password=pass12345" | python3 -c "import sys,json;print(json.load(sys.stdin)['access'])")
 
 curl -H "Authorization: Bearer $TOKEN" -F "title=my photo" -F "file=@photo.png" localhost/api/documents/

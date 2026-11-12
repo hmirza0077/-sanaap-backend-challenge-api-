@@ -6,7 +6,7 @@ from django.urls import reverse
 from rest_framework import status
 from rest_framework.test import APITestCase
 
-from accounts.models import User
+from user.models import User
 from documents import const
 from documents.models import Document
 from documents.services import DocumentService
