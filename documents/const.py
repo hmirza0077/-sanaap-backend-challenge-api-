@@ -1,4 +1,5 @@
-ALLOWED_DOCUMENT_EXTENSIONS = ["jpg", "jpeg", "png"]
+ALLOWED_DOCUMENT_EXTENSIONS = ["jpg", "jpeg", "png", "svg", "webp"]
+FILE_UPLOAD_MAX_MEMORY_SIZE = 10 * 1024 * 1024
 
 # Background storage
 PENDING_FILE_TIMEOUT = 24 * 60 * 60  # the uploaded file is kept in Redis for 1 day, so a failed upload can be retried
