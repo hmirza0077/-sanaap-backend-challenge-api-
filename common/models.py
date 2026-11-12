@@ -1,7 +1,8 @@
 import uuid
 
+from django.conf import settings
 from django.db import models
-from django.utils import timezone
+from .managers import SoftDeleteManager
 
 
 class BaseModel(models.Model):
@@ -14,34 +15,26 @@ class BaseModel(models.Model):
 
 
 class SoftDeleteModel(BaseModel):
+    """Nothing is really deleted in this project: rows are only marked as deleted."""
+
     is_deleted = models.BooleanField(default=False, db_index=True)
     deleted_at = models.DateTimeField(null=True, blank=True)
     deleted_by = models.ForeignKey(
-        "user.User",
+        settings.AUTH_USER_MODEL,
         on_delete=models.SET_NULL,
         null=True,
         blank=True,
         related_name="+",
     )
 
+    objects = SoftDeleteManager()
+    all_objects = models.Manager()  # includes deleted rows
 
     class Meta:
         abstract = True
 
 
-class SoftDelete:
-    @staticmethod
-    def mark(instance, user):
-        instance.is_deleted = True
-        instance.deleted_at = timezone.now()
-        instance.deleted_by = user
-        instance.save(
-            update_fields=["is_deleted", "deleted_at", "deleted_by", "updated_at"]
-        )
-
-
 class ReferenceModel(BaseModel):
-
     is_active = models.BooleanField(default=True)
 
     class Meta:

@@ -11,4 +11,4 @@ class DocumentFilter(django_filters.FilterSet):
 
     class Meta:
         model = Document
-        fields = ["title", "uploaded_by", "created_after", "created_before"]
+        fields = ["title", "status", "uploaded_by", "created_after", "created_before"]

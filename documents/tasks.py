@@ -1,15 +1,15 @@
-import base64
 import logging
 
 from celery import shared_task
 
+from documents import const
 from documents.models import Document
 
 logger = logging.getLogger(__name__)
 
 
-@shared_task
-def store_document_file(document_id, file_content, file_name):
+@shared_task(bind=True, max_retries=const.STORE_FILE_MAX_RETRIES, default_retry_delay=const.STORE_FILE_RETRY_DELAY)
+def store_document_file(self, document_id):
     """Runs in the Celery worker: stores the uploaded file in MinIO."""
     from documents.services import DocumentService
 
@@ -20,5 +20,15 @@ def store_document_file(document_id, file_content, file_name):
         logger.warning(f"Document {document_id} not found.")
         return
 
-    DocumentService(document).store_file(base64.b64decode(file_content), file_name)
+    try:
+        DocumentService(document).store_file()
+    except Exception as exc:
+        if self.request.retries < self.max_retries:
+            logger.warning(f"Store file for document {document_id} Failed, retry {self.request.retries + 1}.")
+            raise self.retry(exc=exc)
+
+        logger.exception(f"Store file for document {document_id} Failed after {self.max_retries} retries.")
+        DocumentService(document).mark_failed()
+        return
+
     logger.info(f"Store file for document {document_id} Complete.")

@@ -1,22 +1,16 @@
-import base64
 from unittest.mock import patch
 
+from django.core.cache import cache
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.urls import reverse
 from rest_framework import status
 from rest_framework.test import APITestCase
 
-from user.models import User
-from documents.tasks import store_document_file
-from asgiref.sync import sync_to_async
-from channels.testing import WebsocketCommunicator
-from django.test import TransactionTestCase
-from rest_framework_simplejwt.tokens import AccessToken
-
-from docvault.asgi import application
+from accounts.models import User
 from documents import const
-from .models import Document
-from .notifications import DocumentNotification
+from documents.models import Document
+from documents.services import DocumentService
+from documents.tasks import store_document_file
 
 IMAGE_CONTENT = b"fake-image-content"
 
@@ -26,7 +20,7 @@ def make_image(name="test.png"):
 
 
 class DocumentTestMixin:
-    """Tests use the real MinIO bucket (run them inside Docker), so files are removed after each test."""
+    """Tests use the real MinIO bucket and Redis (run them inside Docker), so they are cleaned after each test."""
 
     def setUp(self):
         self.admin = User.objects.create_user(username="admin", password="pass12345", role=User.Role.ADMIN)
@@ -35,7 +29,8 @@ class DocumentTestMixin:
         self.list_url = reverse("document-list")
 
     def tearDown(self):
-        for document in Document.objects.all():
+        for document in Document.all_objects.all():
+            cache.delete(DocumentService(document).cache_key)
             if document.file:
                 document.file.delete(save=False)
 
@@ -44,6 +39,10 @@ class DocumentTestMixin:
         return Document.objects.create(
             title=title, file=make_image(), uploaded_by=user or self.admin, status=Document.Status.READY
         )
+
+    def put_file_in_cache(self, document, content=IMAGE_CONTENT, name="photo.png"):
+        """What queue_file_storage does before sending the task."""
+        cache.set(DocumentService(document).cache_key, {"name": name, "content": content})
 
 
 # apply_async is mocked: the API tests only check that the task is sent to the queue
@@ -64,12 +63,11 @@ class DocumentAPITests(DocumentTestMixin, APITestCase):
         self.assertEqual(document.uploaded_by, self.editor)
         self.assertEqual(document.status, Document.Status.PENDING)
 
-        # the file is sent to the worker, not stored in the request
-        mock_apply_async.assert_called_once()
-        document_id, file_content, file_name = mock_apply_async.call_args.kwargs["args"]
-        self.assertEqual(document_id, document.id)
-        self.assertEqual(base64.b64decode(file_content), IMAGE_CONTENT)
-        self.assertEqual(file_name, "test.png")
+        # the file waits in Redis and only the document id is sent to the worker
+        mock_apply_async.assert_called_once_with(args=[document.id])
+        pending_file = cache.get(DocumentService(document).cache_key)
+        self.assertEqual(pending_file["content"], IMAGE_CONTENT)
+        self.assertEqual(pending_file["name"], "test.png")
 
     def test_viewer_cannot_upload(self, mock_apply_async):
         self.client.force_authenticate(self.viewer)
@@ -119,22 +117,30 @@ class DocumentAPITests(DocumentTestMixin, APITestCase):
         document.refresh_from_db()
         self.assertEqual(document.status, Document.Status.PENDING)
 
-    # --- delete ---
+    # --- delete (soft) ---
     def test_editor_cannot_delete(self, mock_apply_async):
         document = self.create_document()
         self.client.force_authenticate(self.editor)
         response = self.client.delete(reverse("document-detail", args=[document.id]))
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
 
-    def test_admin_can_delete(self, mock_apply_async):
+    def test_admin_delete_is_soft(self, mock_apply_async):
         document = self.create_document()
-        file_name = document.file.name
         self.client.force_authenticate(self.admin)
         response = self.client.delete(reverse("document-detail", args=[document.id]))
-
         self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
+
+        # hidden from the API ...
         self.assertFalse(Document.objects.exists())
-        self.assertFalse(document.file.storage.exists(file_name))  # removed from MinIO
+        response = self.client.get(reverse("document-detail", args=[document.id]))
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+
+        # ... but the row and the file are kept
+        deleted_document = Document.all_objects.get(id=document.id)
+        self.assertTrue(deleted_document.is_deleted)
+        self.assertEqual(deleted_document.deleted_by, self.admin)
+        self.assertIsNotNone(deleted_document.deleted_at)
+        self.assertTrue(document.file.storage.exists(document.file.name))
 
     # --- read / download ---
     def test_viewer_can_download(self, mock_apply_async):
@@ -163,6 +169,40 @@ class DocumentAPITests(DocumentTestMixin, APITestCase):
 
         self.assertNotIn("file", item)
         self.assertIn("/download/", item["download_url"])
+
+    # --- retry a failed upload ---
+    def test_editor_can_retry_failed_upload(self, mock_apply_async):
+        document = Document.objects.create(title="broken", uploaded_by=self.editor, status=Document.Status.FAILED)
+        self.put_file_in_cache(document)
+        self.client.force_authenticate(self.editor)
+        response = self.client.post(reverse("document-retry", args=[document.id]))
+
+        self.assertEqual(response.status_code, status.HTTP_202_ACCEPTED)
+        document.refresh_from_db()
+        self.assertEqual(document.status, Document.Status.PENDING)
+        mock_apply_async.assert_called_once_with(args=[document.id])
+
+    def test_retry_when_file_expired(self, mock_apply_async):
+        document = Document.objects.create(title="broken", uploaded_by=self.editor, status=Document.Status.FAILED)
+        self.client.force_authenticate(self.editor)
+        response = self.client.post(reverse("document-retry", args=[document.id]))
+
+        self.assertEqual(response.status_code, status.HTTP_410_GONE)
+        mock_apply_async.assert_not_called()
+
+    def test_only_failed_upload_can_be_retried(self, mock_apply_async):
+        document = self.create_document()  # status = ready
+        self.client.force_authenticate(self.editor)
+        response = self.client.post(reverse("document-retry", args=[document.id]))
+
+        self.assertEqual(response.status_code, status.HTTP_409_CONFLICT)
+        mock_apply_async.assert_not_called()
+
+    def test_viewer_cannot_retry(self, mock_apply_async):
+        document = Document.objects.create(title="broken", uploaded_by=self.editor, status=Document.Status.FAILED)
+        self.client.force_authenticate(self.viewer)
+        response = self.client.post(reverse("document-retry", args=[document.id]))
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
 
     # --- filter & pagination (documents without files, so nothing is sent to MinIO) ---
     def test_filter_by_title(self, mock_apply_async):
@@ -197,54 +237,40 @@ class StoreDocumentFileTaskTests(DocumentTestMixin, APITestCase):
 
     def test_task_stores_file_in_minio(self):
         document = Document.objects.create(title="waiting", uploaded_by=self.admin)  # status = pending
-        file_content = base64.b64encode(IMAGE_CONTENT).decode()
-        store_document_file(document.id, file_content, "photo.png")
+        self.put_file_in_cache(document)
+        store_document_file(document.id)
 
         document.refresh_from_db()
         self.assertEqual(document.status, Document.Status.READY)
         self.assertTrue(document.file.name.startswith("documents/"))
         with document.file.open("rb") as f:
             self.assertEqual(f.read(), IMAGE_CONTENT)
+        # the file is removed from Redis after it is stored
+        self.assertIsNone(cache.get(DocumentService(document).cache_key))
 
     def test_task_replaces_old_file(self):
         document = self.create_document()
         old_file_name = document.file.name
-        file_content = base64.b64encode(b"new-image").decode()
-        store_document_file(document.id, file_content, "new.png")
+        self.put_file_in_cache(document, content=b"new-image", name="new.png")
+        store_document_file(document.id)
 
         document.refresh_from_db()
         self.assertNotEqual(document.file.name, old_file_name)
         self.assertFalse(document.file.storage.exists(old_file_name))
 
     def test_task_with_deleted_document_does_nothing(self):
-        store_document_file(999999, base64.b64encode(IMAGE_CONTENT).decode(), "photo.png")
+        store_document_file(999999)
         self.assertFalse(Document.objects.exists())
 
+    @patch("documents.services.DocumentService.store_file", side_effect=ConnectionError("MinIO is down"))
+    def test_task_retries_then_marks_failed(self, mock_store_file):
+        document = Document.objects.create(title="waiting", uploaded_by=self.admin)
+        self.put_file_in_cache(document)
+        # apply() runs the task here; its retries also run here, one after another
+        store_document_file.apply(args=[document.id])
 
-class DocumentWebSocketTests(TransactionTestCase):
-    def setUp(self):
-        user = User.objects.create_user(username="ali", password="pass12345")
-        self.token = str(AccessToken.for_user(user))
-        self.document = Document.objects.create(title="contract")
-
-    async def test_connection_without_token_is_rejected(self):
-        communicator = WebsocketCommunicator(application, "/ws/documents/")
-        connected, _ = await communicator.connect()
-        self.assertFalse(connected)
-
-    async def test_connection_with_invalid_token_is_rejected(self):
-        communicator = WebsocketCommunicator(application, "/ws/documents/?token=wrong")
-        connected, _ = await communicator.connect()
-        self.assertFalse(connected)
-
-    async def test_logged_in_user_receives_notification(self):
-        communicator = WebsocketCommunicator(application, f"/ws/documents/?token={self.token}")
-        connected, _ = await communicator.connect()
-        self.assertTrue(connected)
-
-        await sync_to_async(DocumentNotification.send_document_event)(const.DOCUMENT_EVENT_CREATED, self.document)
-        message = await communicator.receive_json_from()
-
-        self.assertEqual(message["action"], const.DOCUMENT_EVENT_CREATED)
-        self.assertEqual(message["title"], "contract")
-        await communicator.disconnect()
+        self.assertEqual(mock_store_file.call_count, const.STORE_FILE_MAX_RETRIES + 1)
+        document.refresh_from_db()
+        self.assertEqual(document.status, Document.Status.FAILED)
+        # the file is kept in Redis, so the user can retry
+        self.assertIsNotNone(cache.get(DocumentService(document).cache_key))

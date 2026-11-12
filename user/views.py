@@ -1,5 +1,7 @@
 from drf_spectacular.utils import extend_schema_view, extend_schema
-from rest_framework.generics import RetrieveAPIView
+from rest_framework.decorators import action
+from rest_framework.permissions import IsAuthenticated
+from rest_framework.response import Response
 from rest_framework.viewsets import ModelViewSet
 
 from user.models import User
@@ -20,19 +22,23 @@ from user.serializers import UserSerializer
         summary="Update User",
         description="Admin only: change the role or password of a user",
     ),
+    destroy=extend_schema(
+        summary="Delete User",
+        description="Admin only: soft delete. The user is kept in the database but can no longer log in",
+    ),
+    me=extend_schema(
+        summary="Current User",
+        description="Retrieve the logged-in user",
+    ),
 )
 class UserViewSet(ModelViewSet):
-    queryset = User.objects.order_by("id")
+    queryset = User.objects.all().order_by("id")
     serializer_class = UserSerializer
     permission_classes = [IsAdminRole]
 
+    def perform_destroy(self, instance):
+        instance.soft_delete(self.request.user)
 
-@extend_schema(
-    summary="Current User",
-    description="Retrieve the logged-in user",
-)
-class MeView(RetrieveAPIView):
-    serializer_class = UserSerializer
-
-    def get_object(self):
-        return self.request.user
+    @action(detail=False, methods=["get"], permission_classes=[IsAuthenticated])
+    def me(self, request):
+        return Response(self.get_serializer(request.user).data)

@@ -5,7 +5,6 @@ from rest_framework.test import APITestCase
 from user.models import User
 
 
-# --- JWT auth tests (current) ---
 class LoginTests(APITestCase):
     def setUp(self):
         User.objects.create_user(username="ali", password="pass12345")
@@ -26,13 +25,13 @@ class LoginTests(APITestCase):
     def test_access_token_works_in_header(self):
         access = self.login().data["access"]
         self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {access}")
-        response = self.client.get(reverse("me"))
+        response = self.client.get(reverse("user-me"))
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response.data["username"], "ali")
 
     def test_invalid_token_is_rejected(self):
         self.client.credentials(HTTP_AUTHORIZATION="Bearer not-a-real-token")
-        response = self.client.get(reverse("me"))
+        response = self.client.get(reverse("user-me"))
         self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
 
     def test_refresh_returns_new_access(self):
@@ -78,6 +77,25 @@ class UserManagementTests(APITestCase):
 
     def test_me_returns_current_user(self):
         self.client.force_authenticate(self.editor)
-        response = self.client.get(reverse("me"))
+        response = self.client.get(reverse("user-me"))
         self.assertEqual(response.data["username"], "editor")
         self.assertEqual(response.data["role"], "editor")
+
+    def test_delete_is_soft(self):
+        self.client.force_authenticate(self.admin)
+        response = self.client.delete(reverse("user-detail", args=[self.editor.id]))
+        self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
+
+        # hidden from the API, but still in the database
+        self.assertFalse(User.objects.filter(id=self.editor.id).exists())
+        deleted_user = User.all_objects.get(id=self.editor.id)
+        self.assertTrue(deleted_user.is_deleted)
+        self.assertEqual(deleted_user.deleted_by, self.admin)
+
+    def test_deleted_user_cannot_login(self):
+        self.client.force_authenticate(self.admin)
+        self.client.delete(reverse("user-detail", args=[self.editor.id]))
+        self.client.force_authenticate(None)
+
+        response = self.client.post(reverse("login"), {"username": "editor", "password": "pass12345"})
+        self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
