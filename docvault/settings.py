@@ -24,8 +24,16 @@ INSTALLED_APPS = [
     'django.contrib.messages',
     'django.contrib.staticfiles',
 
+    # Packages
+    "rest_framework",
+    "drf_spectacular",
+    "django_filters",
+    "channels",
+    "django_minio_backend.apps.DjangoMinioBackendConfig",
+
     # Apps
     "user",
+    "documents",
 ]
 
 MIDDLEWARE = [
