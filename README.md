@@ -37,7 +37,7 @@ audit/         audit log model, service, read-only API for admin
 nginx/         nginx config
 ```
 
-Choices (roles, statuses, actions) are `TextChoices` inside each model, e.g. `User.Role.ADMIN`, `Document.Status.READY`. Each file has one job:
+Choices (roles, statuses, actions) are `TextChoices` inside each model, e.g. `Role.ADMIN`, `Document.Status.READY`. Each file has one job:
 `permissions.py` (access rules), `filters.py` (django-filter), `serializers.py` (API data),
 `views.py` (requests), `services.py` (business logic), `tasks.py` (Celery), `consumers.py` / `notifications.py` (WebSocket).
 

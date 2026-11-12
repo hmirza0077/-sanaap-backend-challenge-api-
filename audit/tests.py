@@ -6,6 +6,7 @@ from rest_framework import status
 from rest_framework.test import APITestCase
 
 from user.models import User
+from user.choices import Role
 from audit.models import AuditLog
 from documents.models import Document
 
@@ -16,8 +17,8 @@ def make_image():
 
 class AuditLogTests(APITestCase):
     def setUp(self):
-        self.admin = User.objects.create_user(username="admin", password="pass12345", role=User.Role.ADMIN)
-        self.viewer = User.objects.create_user(username="viewer", password="pass12345", role=User.Role.VIEWER)
+        self.admin = User.objects.create_user(username="admin", password="pass12345", role=Role.ADMIN)
+        self.viewer = User.objects.create_user(username="viewer", password="pass12345", role=Role.VIEWER)
         self.document = Document.objects.create(
             title="contract", file=make_image(), uploaded_by=self.admin, status=Document.Status.READY
         )

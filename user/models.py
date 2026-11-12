@@ -12,8 +12,8 @@ class User(AbstractUser, SoftDeleteModel):
 
     @property
     def is_admin_role(self):
-        return self.is_superuser or self.role == self.Role.ADMIN
+        return self.is_superuser or self.role == Role.ADMIN
 
     @property
     def is_editor_role(self):
-        return self.role == self.Role.EDITOR
+        return self.role == Role.EDITOR

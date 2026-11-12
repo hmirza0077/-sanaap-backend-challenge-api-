@@ -7,6 +7,7 @@ from rest_framework import status
 from rest_framework.test import APITestCase
 
 from user.models import User
+from user.choices import Role
 from documents import const
 from documents.models import Document
 from documents.services import DocumentService
@@ -23,9 +24,9 @@ class DocumentTestMixin:
     """Tests use the real MinIO bucket and Redis (run them inside Docker), so they are cleaned after each test."""
 
     def setUp(self):
-        self.admin = User.objects.create_user(username="admin", password="pass12345", role=User.Role.ADMIN)
-        self.editor = User.objects.create_user(username="editor", password="pass12345", role=User.Role.EDITOR)
-        self.viewer = User.objects.create_user(username="viewer", password="pass12345", role=User.Role.VIEWER)
+        self.admin = User.objects.create_user(username="admin", password="pass12345", role=Role.ADMIN)
+        self.editor = User.objects.create_user(username="editor", password="pass12345", role=Role.EDITOR)
+        self.viewer = User.objects.create_user(username="viewer", password="pass12345", role=Role.VIEWER)
         self.list_url = reverse("document-list")
 
     def tearDown(self):
