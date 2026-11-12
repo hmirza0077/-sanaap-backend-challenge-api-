@@ -12,7 +12,8 @@ services:
   # Django on Daphne (ASGI server: HTTP + WebSocket). Not published, only nginx can reach it
   app:
     <<: *app
-    command: [ "daphne", "-b", "0.0.0.0", "-p", "8000", "config.asgi:application" ]
+    # --proxy-headers: read the real client IP from the X-Forwarded-For header set by nginx
+    command: [ "daphne", "-b", "0.0.0.0", "-p", "8000", "--proxy-headers", "config.asgi:application" ]
     volumes:
       - static_data:/home/user/app/static
     depends_on:
@@ -48,7 +49,7 @@ services:
     image: postgres:16
     restart: always
     env_file:
-      - db.env
+      - app.env
     volumes:
       - postgres_data:/var/lib/postgresql/data
     networks:
@@ -70,7 +71,7 @@ services:
     restart: always
     command: server /data --console-address ":9001"
     env_file:
-      - minio.env
+      - app.env
     ports:
       - "127.0.0.1:9001:9001" # MinIO web console
     volumes:

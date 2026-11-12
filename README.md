@@ -2,6 +2,7 @@
 
 A Document Management System API built with **Django Rest Framework**.
 Users can upload, update, download, and delete documents (images). Files are stored in **MinIO**, and access is controlled by role.
+Nothing is really deleted: documents and users are **soft deleted** (`is_deleted`, `deleted_at`, `deleted_by`) and hidden from the API.
 
 Stack: Django, DRF, PostgreSQL, Redis, MinIO, Celery, Django Channels, Daphne, Nginx, Docker.
 
@@ -21,7 +22,7 @@ Stack: Django, DRF, PostgreSQL, Redis, MinIO, Celery, Django Channels, Daphne, N
 - Only `jpg`, `jpeg`, and `png` files (max 10 MB)
 - Filtering and pagination
 - Swagger docs and unit tests
-- Background storage: a **Celery** worker stores uploaded files in MinIO, so the request returns right away
+- Background storage: a **Celery** worker stores uploaded files in MinIO, so the request returns right away. Failed uploads are retried automatically, then marked `failed`, and the user can retry them from the API
 - **Audit log** for every view, download, create, update, and delete of a document
 - **Nginx** reverse proxy in front of **Daphne**
 - **WebSocket** notifications (Django Channels) to all logged-in users when a document is created or updated
@@ -30,7 +31,7 @@ Stack: Django, DRF, PostgreSQL, Redis, MinIO, Celery, Django Channels, Daphne, N
 
 ```
 config/        settings, urls, asgi/wsgi, celery
-common/        upload path helper, pagination
+common/        base models (uuid, timestamps, soft delete), upload path helper, pagination
 accounts/      user + role, login, user management, permissions, websocket auth
 documents/     document model, serializer, filters, views, service, celery task, websocket
 audit/         audit log model, service, read-only API for admin
@@ -43,8 +44,9 @@ Choices (roles, statuses, actions) are `TextChoices` inside each model, e.g. `Us
 
 ## Run with Docker
 
-The env files are already filled with development values (`app.env`, `db.env`, `minio.env`).
-They are in `.gitignore`; the `*.env.example` files show the keys. Change the passwords and `SECRET_KEY` for production.
+All settings are in one file, `app.env`, which every service reads (app, celery, db, minio).
+It is already filled with development values and is in `.gitignore`; `app.env.example` shows the keys. Change the passwords and `SECRET_KEY` for production.
+The db container creates the database user from `POSTGRES_*`, the minio container creates its admin user from `MINIO_ROOT_*`, and Django connects with the same values.
 
 ```bash
 docker compose up --build
@@ -96,23 +98,26 @@ The access token is valid for 15 minutes, the refresh token for 1 day.
 |--------|-----|-----|-------------|
 | POST | `/api/accounts/login/` | anyone | `{username, password}` → `{access, refresh}` |
 | POST | `/api/accounts/token/refresh/` | anyone | `{refresh}` → `{access}` |
-| GET | `/api/accounts/me/` | logged in | current user |
+| GET | `/api/accounts/users/me/` | logged in | current user |
 | GET/POST | `/api/accounts/users/` | admin | list / create users (with `role`) |
-| GET/PATCH/DELETE | `/api/accounts/users/{id}/` | admin | view / change role / delete user |
+| GET/PATCH/DELETE | `/api/accounts/users/{id}/` | admin | view / change role / soft delete user |
 | GET | `/api/documents/` | all roles | list |
 | POST | `/api/documents/` | admin, editor | multipart: `title`, `file` |
 | GET | `/api/documents/{id}/` | all roles | details |
 | PUT/PATCH | `/api/documents/{id}/` | admin, editor | update |
-| DELETE | `/api/documents/{id}/` | admin | delete |
+| DELETE | `/api/documents/{id}/` | admin | soft delete |
 | GET | `/api/documents/{id}/download/` | all roles | download the file |
+| POST | `/api/documents/{id}/retry/` | admin, editor | retry a `failed` upload |
 | GET | `/api/audit-logs/` | admin | history (`?action=download`, `?document_id=5`) |
 
-Document filters: `?title=invoice`, `?uploaded_by=ali_editor`, `?created_after=2026-01-01&created_before=2026-12-31`, `?page=2`, `?page_size=20`.
+Document filters: `?title=invoice`, `?status=failed`, `?uploaded_by=ali_editor`, `?created_after=2026-01-01&created_before=2026-12-31`, `?page=2`, `?page_size=20`.
 
 ### Background storage
-1. `POST /api/documents/` creates the document with `status: "pending"` and sends the file (base64) to Celery with `apply_async`.
-2. The worker saves the file in MinIO and sets `status: "ready"`. On update, the old file is deleted from MinIO.
-3. Download returns `409` until the status is `ready`.
+1. `POST /api/documents/` creates the document with `status: "pending"`, keeps the file in Redis (for 1 day) and sends only the document id to Celery with `apply_async`.
+2. The worker saves the file in MinIO, sets `status: "ready"` and removes the file from Redis. On update, the old file is deleted from MinIO.
+3. If saving fails (e.g. MinIO is down), the worker retries 3 times, 10 seconds apart. After that the status becomes `failed`.
+4. The user can call `POST /api/documents/{id}/retry/` without sending the file again. It returns `410` if the file is no longer in Redis (then upload it again with `PATCH`).
+5. Download returns `409` until the status is `ready`.
 
 ### WebSocket notifications
 ```js
