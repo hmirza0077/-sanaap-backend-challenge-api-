@@ -2,9 +2,10 @@ from django.contrib.auth.models import AbstractUser
 from django.db import models
 from .choices import Role
 from .managers import UserManager
+from common.models import SoftDeleteModel
 
 
-class User(AbstractUser):
+class User(AbstractUser, SoftDeleteModel):
     role = models.CharField(max_length=10, choices=Role.choices, default=Role.VIEWER)
 
     objects = UserManager()
