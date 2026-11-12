@@ -7,6 +7,7 @@ from rest_framework.viewsets import ModelViewSet
 from user.models import User
 from user.permissions import IsAdminRole
 from user.serializers import UserSerializer
+from common.services import SoftDeleteService
 
 
 @extend_schema_view(
@@ -37,7 +38,7 @@ class UserViewSet(ModelViewSet):
     permission_classes = [IsAdminRole]
 
     def perform_destroy(self, instance):
-        instance.soft_delete(self.request.user)
+        SoftDeleteService.delete(instance, self.request.user)
 
     @action(detail=False, methods=["get"], permission_classes=[IsAuthenticated])
     def me(self, request):

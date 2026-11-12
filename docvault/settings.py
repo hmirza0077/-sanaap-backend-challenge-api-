@@ -34,6 +34,7 @@ INSTALLED_APPS = [
     # Apps
     "user",
     "documents",
+    "audit"
 ]
 
 MIDDLEWARE = [

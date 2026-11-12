@@ -7,7 +7,8 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.viewsets import ModelViewSet
 
-from accounts.permissions import DocumentPermission
+from common.services import SoftDeleteService
+from user.permissions import DocumentPermission
 from audit.models import AuditLog
 from audit.services import AuditLogService
 from documents import const
@@ -73,7 +74,7 @@ class DocumentViewSet(ModelViewSet):
 
     def perform_destroy(self, instance):
         # nothing is really deleted: the row and the file in MinIO are kept
-        instance.soft_delete(self.request.user)
+        SoftDeleteService.delete(instance, self.request.user)
         AuditLogService.log_action(self.request.user, AuditLog.Action.DELETE, instance)
 
     def retrieve(self, request, *args, **kwargs):
