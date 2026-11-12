@@ -29,7 +29,7 @@ Stack: Django, DRF, PostgreSQL, Redis, MinIO, Celery, Django Channels, Daphne, N
 ## Project structure
 
 ```
-config/        settings, urls, asgi/wsgi, celery
+docvault/        settings, urls, asgi/wsgi, celery
 common/        upload path helper, pagination
 user/      user + role, login, user management, permissions, websocket auth
 documents/     document model, serializer, filters, views, service, celery task, websocket
