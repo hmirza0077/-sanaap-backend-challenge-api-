@@ -17,6 +17,7 @@ from documents.models import Document
 from documents.notifications import DocumentNotification
 from documents.serializers import DocumentSerializer
 from documents.services import DocumentService
+from documents.choices import Status
 
 
 @extend_schema_view(
@@ -86,7 +87,7 @@ class DocumentViewSet(ModelViewSet):
     def download(self, request, pk=None):
         """Secure download: only authenticated users with read access get the file."""
         instance = self.get_object()
-        if instance.status != Document.Status.READY:
+        if instance.status != Status.READY:
             return Response({"detail": "File is not ready."}, status=status.HTTP_409_CONFLICT)
 
         AuditLogService.log_action(request.user, AuditLog.Action.DOWNLOAD, instance)
@@ -97,7 +98,7 @@ class DocumentViewSet(ModelViewSet):
     def retry(self, request, pk=None):
         """The user retries a failed upload without sending the file again."""
         instance = self.get_object()
-        if instance.status != Document.Status.FAILED:
+        if instance.status != Status.FAILED:
             return Response({"detail": "Only failed uploads can be retried."}, status=status.HTTP_409_CONFLICT)
 
         if not DocumentService(instance).retry_file_storage():
