@@ -119,7 +119,10 @@ Document filters: `?title=invoice`, `?uploaded_by=ali_editor`, `?created_after=2
 const ws = new WebSocket("ws://localhost/ws/documents/?token=" + accessToken);
 ws.onmessage = (e) => console.log(JSON.parse(e.data));
 // {"action": "created", "id": 12, "title": "my photo", "status": "pending"}
+// {"action": "updated", "id": 12, "title": "my photo", "status": "ready"}   <- sent by the Celery worker
 ```
+A message is sent when a document is created, updated or retried, and when the background task finishes (`ready` or `failed`).
+
 Browsers cannot send headers on WebSocket, so the JWT goes in the URL. Connections without a valid token are rejected.
 
 ### Example

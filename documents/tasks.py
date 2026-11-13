@@ -4,6 +4,7 @@ from celery import shared_task
 
 from documents import const
 from documents.models import Document
+from documents.notifications import DocumentNotification
 
 logger = logging.getLogger(__name__)
 
@@ -29,6 +30,9 @@ def store_document_file(self, document_id):
 
         logger.exception(f"Store file for document {document_id} Failed after {self.max_retries} retries.")
         DocumentService(document).mark_failed()
+        DocumentNotification.send_document_event(const.DOCUMENT_EVENT_UPDATED, document)  # status = failed
         return
 
+    # outside the try: if sending the notification fails, the stored file must not be stored again
+    DocumentNotification.send_document_event(const.DOCUMENT_EVENT_UPDATED, document)  # status = ready
     logger.info(f"Store file for document {document_id} Complete.")

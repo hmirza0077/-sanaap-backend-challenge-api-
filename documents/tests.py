@@ -283,3 +283,29 @@ class StoreDocumentFileTaskTests(DocumentTestMixin, APITestCase):
         self.assertEqual(document.status, Document.Status.FAILED)
         # the file is kept in Redis, so the user can retry
         self.assertIsNotNone(cache.get(DocumentService(document).cache_key))
+
+    # --- WebSocket notification when the worker is done ---
+    @patch("documents.tasks.DocumentNotification.send_document_event")
+    def test_task_sends_notification_when_ready(self, mock_send):
+        document = Document.objects.create(title="waiting", uploaded_by=self.admin)
+        self.put_file_in_cache(document)
+        store_document_file(document.id)
+
+        mock_send.assert_called_once()
+        action, sent_document = mock_send.call_args.args
+        self.assertEqual(action, const.DOCUMENT_EVENT_UPDATED)
+        self.assertEqual(sent_document.id, document.id)
+        self.assertEqual(sent_document.status, Document.Status.READY)
+
+    @patch("documents.tasks.DocumentNotification.send_document_event")
+    @patch("documents.services.DocumentService.store_file", side_effect=ConnectionError("MinIO is down"))
+    def test_task_sends_notification_when_failed(self, mock_store_file, mock_send):
+        document = Document.objects.create(title="waiting", uploaded_by=self.admin)
+        self.put_file_in_cache(document)
+        store_document_file.apply(args=[document.id])
+
+        # only once, after the last retry (not on every retry)
+        mock_send.assert_called_once()
+        action, sent_document = mock_send.call_args.args
+        self.assertEqual(action, const.DOCUMENT_EVENT_UPDATED)
+        self.assertEqual(sent_document.status, Document.Status.FAILED)
