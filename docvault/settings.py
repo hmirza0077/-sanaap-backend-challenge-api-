@@ -191,5 +191,7 @@ MINIO_POLICY_HOOKS = []
 MINIO_BUCKET_CHECK_ON_SAVE = env("MINIO_BUCKET_CHECK_ON_SAVE", cast=bool)
 
 # Uploads stay in memory (never written to disk) until they are sent to MinIO.
-# The same 10 MB limit is set in nginx (client_max_body_size).
 FILE_UPLOAD_HANDLERS = ["django.core.files.uploadhandler.MemoryFileUploadHandler"]
+# Bigger requests are dropped by the memory handler. It is a bit more than MAX_DOCUMENT_SIZE
+# (the request also has the title and multipart headers), so the serializer can return a clear error.
+FILE_UPLOAD_MAX_MEMORY_SIZE = 11 * 1024 * 1024

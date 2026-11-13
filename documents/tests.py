@@ -83,6 +83,14 @@ class DocumentAPITests(DocumentTestMixin, APITestCase):
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         mock_apply_async.assert_not_called()
 
+    def test_large_file_is_rejected(self, mock_apply_async):
+        self.client.force_authenticate(self.editor)
+        big_file = SimpleUploadedFile("big.png", b"0" * (const.MAX_DOCUMENT_SIZE + 1), content_type="image/png")
+        response = self.client.post(self.list_url, {"title": "x", "file": big_file}, format="multipart")
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("file", response.data)
+        mock_apply_async.assert_not_called()
+
     # --- update ---
     def test_editor_can_update_title(self, mock_apply_async):
         document = self.create_document()
