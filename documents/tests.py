@@ -12,6 +12,7 @@ from documents import const
 from documents.models import Document
 from documents.services import DocumentService
 from documents.tasks import store_document_file
+from documents.choices import Status
 
 IMAGE_CONTENT = b"fake-image-content"
 
@@ -38,7 +39,7 @@ class DocumentTestMixin:
     def create_document(self, title="doc", user=None):
         """A ready document with a file in MinIO."""
         return Document.objects.create(
-            title=title, file=make_image(), uploaded_by=user or self.admin, status=Document.Status.READY
+            title=title, file=make_image(), uploaded_by=user or self.admin, status=Status.READY
         )
 
     def put_file_in_cache(self, document, content=IMAGE_CONTENT, name="photo.png"):
@@ -62,7 +63,7 @@ class DocumentAPITests(DocumentTestMixin, APITestCase):
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
         document = Document.objects.get()
         self.assertEqual(document.uploaded_by, self.editor)
-        self.assertEqual(document.status, Document.Status.PENDING)
+        self.assertEqual(document.status, Status.PENDING)
 
         # the file waits in Redis and only the document id is sent to the worker
         mock_apply_async.assert_called_once_with(args=[document.id])
@@ -109,7 +110,7 @@ class DocumentAPITests(DocumentTestMixin, APITestCase):
         self.client.patch(url, {"file": make_image("new.png")}, format="multipart")
 
         document.refresh_from_db()
-        self.assertEqual(document.status, Document.Status.PENDING)
+        self.assertEqual(document.status, Status.PENDING)
         mock_apply_async.assert_called_once()
 
     def test_viewer_cannot_update(self, mock_apply_async):
@@ -124,7 +125,7 @@ class DocumentAPITests(DocumentTestMixin, APITestCase):
         self.client.patch(reverse("document-detail", args=[document.id]), {"status": "ready"})
 
         document.refresh_from_db()
-        self.assertEqual(document.status, Document.Status.PENDING)
+        self.assertEqual(document.status, Status.PENDING)
 
     # --- delete (soft) ---
     def test_editor_cannot_delete(self, mock_apply_async):
@@ -181,18 +182,18 @@ class DocumentAPITests(DocumentTestMixin, APITestCase):
 
     # --- retry a failed upload ---
     def test_editor_can_retry_failed_upload(self, mock_apply_async):
-        document = Document.objects.create(title="broken", uploaded_by=self.editor, status=Document.Status.FAILED)
+        document = Document.objects.create(title="broken", uploaded_by=self.editor, status=Status.FAILED)
         self.put_file_in_cache(document)
         self.client.force_authenticate(self.editor)
         response = self.client.post(reverse("document-retry", args=[document.id]))
 
         self.assertEqual(response.status_code, status.HTTP_202_ACCEPTED)
         document.refresh_from_db()
-        self.assertEqual(document.status, Document.Status.PENDING)
+        self.assertEqual(document.status, Status.PENDING)
         mock_apply_async.assert_called_once_with(args=[document.id])
 
     def test_retry_when_file_expired(self, mock_apply_async):
-        document = Document.objects.create(title="broken", uploaded_by=self.editor, status=Document.Status.FAILED)
+        document = Document.objects.create(title="broken", uploaded_by=self.editor, status=Status.FAILED)
         self.client.force_authenticate(self.editor)
         response = self.client.post(reverse("document-retry", args=[document.id]))
 
@@ -208,7 +209,7 @@ class DocumentAPITests(DocumentTestMixin, APITestCase):
         mock_apply_async.assert_not_called()
 
     def test_viewer_cannot_retry(self, mock_apply_async):
-        document = Document.objects.create(title="broken", uploaded_by=self.editor, status=Document.Status.FAILED)
+        document = Document.objects.create(title="broken", uploaded_by=self.editor, status=Status.FAILED)
         self.client.force_authenticate(self.viewer)
         response = self.client.post(reverse("document-retry", args=[document.id]))
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
@@ -250,7 +251,7 @@ class StoreDocumentFileTaskTests(DocumentTestMixin, APITestCase):
         store_document_file(document.id)
 
         document.refresh_from_db()
-        self.assertEqual(document.status, Document.Status.READY)
+        self.assertEqual(document.status, Status.READY)
         self.assertTrue(document.file.name.startswith("documents/"))
         with document.file.open("rb") as f:
             self.assertEqual(f.read(), IMAGE_CONTENT)
@@ -280,7 +281,7 @@ class StoreDocumentFileTaskTests(DocumentTestMixin, APITestCase):
 
         self.assertEqual(mock_store_file.call_count, const.STORE_FILE_MAX_RETRIES + 1)
         document.refresh_from_db()
-        self.assertEqual(document.status, Document.Status.FAILED)
+        self.assertEqual(document.status, Status.FAILED)
         # the file is kept in Redis, so the user can retry
         self.assertIsNotNone(cache.get(DocumentService(document).cache_key))
 
@@ -295,7 +296,7 @@ class StoreDocumentFileTaskTests(DocumentTestMixin, APITestCase):
         action, sent_document = mock_send.call_args.args
         self.assertEqual(action, const.DOCUMENT_EVENT_UPDATED)
         self.assertEqual(sent_document.id, document.id)
-        self.assertEqual(sent_document.status, Document.Status.READY)
+        self.assertEqual(sent_document.status, Status.READY)
 
     @patch("documents.tasks.DocumentNotification.send_document_event")
     @patch("documents.services.DocumentService.store_file", side_effect=ConnectionError("MinIO is down"))
@@ -308,4 +309,4 @@ class StoreDocumentFileTaskTests(DocumentTestMixin, APITestCase):
         mock_send.assert_called_once()
         action, sent_document = mock_send.call_args.args
         self.assertEqual(action, const.DOCUMENT_EVENT_UPDATED)
-        self.assertEqual(sent_document.status, Document.Status.FAILED)
+        self.assertEqual(sent_document.status, Status.FAILED)

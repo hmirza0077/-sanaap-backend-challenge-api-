@@ -26,7 +26,6 @@ class DocumentSerializer(serializers.ModelSerializer):
         return file
 
     def get_download_url(self, obj):
-        # The real MinIO path is never exposed; the file is served by an authenticated endpoint.
         path = reverse("document-download", args=[obj.id])
         request = self.context.get("request")
         return request.build_absolute_uri(path) if request else path

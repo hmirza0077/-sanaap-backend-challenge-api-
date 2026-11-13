@@ -9,6 +9,7 @@ from user.models import User
 from user.choices import Role
 from audit.models import AuditLog
 from documents.models import Document
+from documents.choices import Status
 
 
 def make_image():
@@ -20,7 +21,7 @@ class AuditLogTests(APITestCase):
         self.admin = User.objects.create_user(username="admin", password="pass12345", role=Role.ADMIN)
         self.viewer = User.objects.create_user(username="viewer", password="pass12345", role=Role.VIEWER)
         self.document = Document.objects.create(
-            title="contract", file=make_image(), uploaded_by=self.admin, status=Document.Status.READY
+            title="contract", file=make_image(), uploaded_by=self.admin, status=Status.READY
         )
 
     def tearDown(self):
