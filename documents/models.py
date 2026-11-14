@@ -29,3 +29,21 @@ class Document(SoftDeleteModel):
 
     def __str__(self):
         return self.title
+
+
+class DocumentShare(SoftDeleteModel):
+    document = models.ForeignKey(Document, on_delete=models.CASCADE, related_name="shares")
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="shared_documents")
+    shared_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, related_name="+")
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["document", "user"],
+                condition=models.Q(is_deleted=False),
+                name="unique_active_document_share",
+            ),
+        ]
+
+    def __str__(self):
+        return f"{self.document} -> {self.user}"

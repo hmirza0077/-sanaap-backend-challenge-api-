@@ -1,5 +1,9 @@
+from datetime import timedelta
+
 ALLOWED_DOCUMENT_EXTENSIONS = ["jpg", "jpeg", "png", "svg", "webp"]
 MAX_DOCUMENT_SIZE = 10 * 1024 * 1024
+
+DOWNLOAD_URL_EXPIRY = timedelta(seconds=60)
 
 # Background storage
 PENDING_FILE_TIMEOUT = 24 * 60 * 60
@@ -7,6 +11,6 @@ STORE_FILE_MAX_RETRIES = 3
 STORE_FILE_RETRY_DELAY = 10
 
 # WebSocket
-DOCUMENTS_GROUP_NAME = "documents"
+ADMINS_GROUP_NAME = "documents_admins"
 DOCUMENT_EVENT_CREATED = "created"
 DOCUMENT_EVENT_UPDATED = "updated"

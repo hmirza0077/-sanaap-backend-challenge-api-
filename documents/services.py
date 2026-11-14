@@ -1,9 +1,23 @@
+import os
+
+from django.conf import settings
 from django.core.cache import cache
 from django.core.files.base import ContentFile
+from minio import Minio
 
+from common.services import SoftDeleteService
 from documents import const
-from documents.choices import Status
+from documents.models import DocumentShare
 from documents.tasks import store_document_file
+from documents.choices import Status
+
+minio_external_client = Minio(
+    settings.MINIO_EXTERNAL_ENDPOINT,
+    access_key=settings.MINIO_ACCESS_KEY,
+    secret_key=settings.MINIO_SECRET_KEY,
+    secure=settings.MINIO_EXTERNAL_ENDPOINT_USE_HTTPS,
+    region=settings.MINIO_REGION,
+)
 
 
 class DocumentService:
@@ -40,6 +54,23 @@ class DocumentService:
     def mark_failed(self):
         self.document.status = Status.FAILED
         self.document.save(update_fields=["status", "updated_at"])
+
+    def get_download_url(self):
+        filename = os.path.basename(self.document.file.name)
+        return minio_external_client.presigned_get_object(
+            settings.MINIO_APP_PRIVATE_BUCKET,
+            self.document.file.name,
+            expires=const.DOWNLOAD_URL_EXPIRY,
+            response_headers={"response-content-disposition": f'attachment; filename="{filename}"'},
+        )
+
+    def share(self, user, shared_by):
+        DocumentShare.objects.get_or_create(document=self.document, user=user, defaults={"shared_by": shared_by})
+
+    def unshare(self, user, unshared_by):
+        share = DocumentShare.objects.filter(document=self.document, user=user).first()
+        if share:
+            SoftDeleteService.delete(share, unshared_by)
 
     def _send_to_worker(self):
         self.document.status = Status.PENDING

@@ -86,6 +86,10 @@ class UserManagementTests(APITestCase):
         superuser = User.objects.create_superuser(username="root", password="pass12345")
         self.assertEqual(superuser.role, Role.ADMIN)
 
+    def test_superuser_gets_admin_role(self):
+        superuser = User.objects.create_superuser(username="root", password="pass12345")
+        self.assertEqual(superuser.role, Role.ADMIN)
+
     def test_delete_is_soft(self):
         self.client.force_authenticate(self.admin)
         response = self.client.delete(reverse("user-detail", args=[self.editor.id]))
