@@ -1,20 +1,25 @@
 from channels.generic.websocket import AsyncJsonWebsocketConsumer
 
 from documents import const
+from documents.notifications import user_group_name
 
 
 class DocumentConsumer(AsyncJsonWebsocketConsumer):
     async def connect(self):
-        # only logged-in users can listen
-        if not self.scope["user"].is_authenticated:
+        user = self.scope["user"]
+        self.group_name = None
+
+        if not user.is_authenticated:
             await self.close()
             return
-        await self.channel_layer.group_add(const.DOCUMENTS_GROUP_NAME, self.channel_name)
+
+        self.group_name = const.ADMINS_GROUP_NAME if user.is_admin_role else user_group_name(user.id)
+        await self.channel_layer.group_add(self.group_name, self.channel_name)
         await self.accept()
 
     async def disconnect(self, code):
-        await self.channel_layer.group_discard(const.DOCUMENTS_GROUP_NAME, self.channel_name)
+        if self.group_name:
+            await self.channel_layer.group_discard(self.group_name, self.channel_name)
 
-    # called for messages sent with "type": "document.event"
     async def document_event(self, event):
         await self.send_json(event["data"])
