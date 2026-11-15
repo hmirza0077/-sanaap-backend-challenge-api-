@@ -66,8 +66,6 @@ class DocumentViewSet(ModelViewSet):
     filterset_class = DocumentFilter
 
     def get_queryset(self):
-        if getattr(self, "swagger_fake_view", False):  # schema generation for Swagger has no real user
-            return Document.objects.none()
 
         user = self.request.user
         queryset = Document.objects.select_related("uploaded_by").prefetch_related(
