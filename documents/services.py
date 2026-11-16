@@ -33,6 +33,7 @@ class DocumentService:
     def retry_file_storage(self):
         if cache.get(self.cache_key) is None:
             return False
+        self.mark_pending()
         self._send_to_worker()
         return True
 
@@ -44,8 +45,8 @@ class DocumentService:
         old_file_name = self.document.file.name
 
         self.document.file.save(pending_file["name"], ContentFile(pending_file["content"]), save=False)
-        self.document.status = Status.READY
-        self.document.save(update_fields=["file", "status", "updated_at"])
+        self.document.save(update_fields=["file"])
+        self.mark_ready()
         cache.delete(self.cache_key)
 
         if old_file_name:
@@ -53,6 +54,14 @@ class DocumentService:
 
     def mark_failed(self):
         self.document.status = Status.FAILED
+        self.document.save(update_fields=["status", "updated_at"])
+
+    def mark_pending(self):
+        self.document.status = Status.PENDING
+        self.document.save(update_fields=["status", "updated_at"])
+
+    def mark_ready(self):
+        self.document.status = Status.READY
         self.document.save(update_fields=["status", "updated_at"])
 
     def get_download_url(self):
@@ -73,6 +82,4 @@ class DocumentService:
             SoftDeleteService.delete(share, unshared_by)
 
     def _send_to_worker(self):
-        self.document.status = Status.PENDING
-        self.document.save(update_fields=["status", "updated_at"])
         store_document_file.apply_async(args=[self.document.id])

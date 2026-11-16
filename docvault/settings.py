@@ -34,7 +34,8 @@ INSTALLED_APPS = [
     # Apps
     "user",
     "documents",
-    "audit"
+    "audit",
+    # "notification",
 ]
 
 MIDDLEWARE = [
@@ -189,7 +190,6 @@ MINIO_PRIVATE_BUCKETS = [
 ]
 MINIO_PUBLIC_BUCKETS = []
 MINIO_POLICY_HOOKS = []
-# Creates bucket if missing, then save
 MINIO_BUCKET_CHECK_ON_SAVE = env("MINIO_BUCKET_CHECK_ON_SAVE", cast=bool)
 
 # Uploads stay in memory (never written to disk) until they are sent to MinIO.
