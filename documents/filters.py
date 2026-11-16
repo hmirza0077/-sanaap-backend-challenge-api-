@@ -5,7 +5,7 @@ from documents.models import Document
 
 class DocumentFilter(django_filters.FilterSet):
     title = django_filters.CharFilter(lookup_expr="icontains")
-    uploaded_by = django_filters.CharFilter(field_name="uploaded_by__username")
+    uploaded_by = django_filters.CharFilter(field_name="uploaded_by__username", lookup_expr="icontains")
     created_after = django_filters.DateFilter(field_name="created_at", lookup_expr="date__gte")
     created_before = django_filters.DateFilter(field_name="created_at", lookup_expr="date__lte")
 

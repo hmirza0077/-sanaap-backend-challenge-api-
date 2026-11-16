@@ -34,7 +34,8 @@ INSTALLED_APPS = [
     # Apps
     "user",
     "documents",
-    "audit"
+    "audit",
+    # "notification",
 ]
 
 MIDDLEWARE = [
@@ -179,6 +180,8 @@ MINIO_EXTERNAL_ENDPOINT_USE_HTTPS = env("MINIO_EXTERNAL_ENDPOINT_USE_HTTPS", cas
 MINIO_ACCESS_KEY = env("MINIO_ACCESS_KEY", cast=str)
 MINIO_SECRET_KEY = env("MINIO_SECRET_KEY", cast=str)
 MINIO_USE_HTTPS = env("MINIO_USE_HTTPS", cast=bool)
+# MinIO default region; set so presigning needs no network call
+MINIO_REGION = "us-east-1"
 MINIO_URL_EXPIRY_HOURS = timedelta(hours=1)
 MINIO_CONSISTENCY_CHECK_ON_START = env("MINIO_CONSISTENCY_CHECK_ON_START", cast=bool)
 MINIO_APP_PRIVATE_BUCKET = env("MINIO_APP_PRIVATE_BUCKET", cast=str)
@@ -187,10 +190,10 @@ MINIO_PRIVATE_BUCKETS = [
 ]
 MINIO_PUBLIC_BUCKETS = []
 MINIO_POLICY_HOOKS = []
-# Creates bucket if missing, then save
 MINIO_BUCKET_CHECK_ON_SAVE = env("MINIO_BUCKET_CHECK_ON_SAVE", cast=bool)
 
 # Uploads stay in memory (never written to disk) until they are sent to MinIO.
-# The same 10 MB limit is set in nginx (client_max_body_size).
 FILE_UPLOAD_HANDLERS = ["django.core.files.uploadhandler.MemoryFileUploadHandler"]
-FILE_UPLOAD_MAX_MEMORY_SIZE = 10 * 1024 * 1024
+# Bigger requests are dropped by the memory handler. It is a bit more than MAX_DOCUMENT_SIZE
+# (the request also has the title and multipart headers), so the serializer can return a clear error.
+FILE_UPLOAD_MAX_MEMORY_SIZE = 11 * 1024 * 1024

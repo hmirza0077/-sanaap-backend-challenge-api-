@@ -1,7 +1,7 @@
 from drf_spectacular.utils import extend_schema_view, extend_schema
 from rest_framework.viewsets import ReadOnlyModelViewSet
 
-from accounts.permissions import IsAdminRole
+from user.permissions import IsAdminRole
 from audit.models import AuditLog
 from audit.serializers import AuditLogSerializer
 

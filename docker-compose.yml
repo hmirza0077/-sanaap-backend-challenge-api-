@@ -9,11 +9,9 @@ x-app: &app
     - storage
 
 services:
-  # Django on Daphne (ASGI server: HTTP + WebSocket). Not published, only nginx can reach it
   app:
     <<: *app
-    # --proxy-headers: read the real client IP from the X-Forwarded-For header set by nginx
-    command: [ "daphne", "-b", "0.0.0.0", "-p", "8000", "--proxy-headers", "config.asgi:application" ]
+    command: [ "daphne", "-b", "0.0.0.0", "-p", "8000", "--proxy-headers", "docvault.asgi:application" ]
     volumes:
       - static_data:/home/user/app/static
     depends_on:
@@ -24,14 +22,12 @@ services:
       minio:
         condition: service_started
 
-  # Celery worker: stores uploaded files in MinIO in the background
   celery:
     <<: *app
-    command: [ "celery", "-A", "config", "worker", "-l", "info" ]
+    command: [ "celery", "-A", "docvault", "worker", "-l", "info" ]
     depends_on:
       - app
 
-  # reverse proxy: the only service open to the outside
   nginx:
     image: nginx:1.27
     restart: always
@@ -67,12 +63,14 @@ services:
       - database
 
   minio:
-    image: minio/minio:RELEASE.2024-11-07T00-52-20Z
+    image: cgr.dev/chainguard/minio:latest
+    user: root
     restart: always
     command: server /data --console-address ":9001"
     env_file:
       - app.env
     ports:
+      - "9000:9000"
       - "127.0.0.1:9001:9001" # MinIO web console
     volumes:
       - minio_data:/data

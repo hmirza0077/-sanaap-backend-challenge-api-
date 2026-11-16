@@ -3,6 +3,7 @@ from rest_framework import status
 from rest_framework.test import APITestCase
 
 from user.models import User
+from .choices import Role
 
 
 class LoginTests(APITestCase):
@@ -43,8 +44,8 @@ class LoginTests(APITestCase):
 
 class UserManagementTests(APITestCase):
     def setUp(self):
-        self.admin = User.objects.create_user(username="admin", password="pass12345", role=User.Role.ADMIN)
-        self.editor = User.objects.create_user(username="editor", password="pass12345", role=User.Role.EDITOR)
+        self.admin = User.objects.create_user(username="admin", password="pass12345", role=Role.ADMIN)
+        self.editor = User.objects.create_user(username="editor", password="pass12345", role=Role.EDITOR)
         self.url = reverse("user-list")
 
     def test_admin_can_create_user_with_role(self):
@@ -54,7 +55,7 @@ class UserManagementTests(APITestCase):
 
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
         user = User.objects.get(username="new")
-        self.assertEqual(user.role, User.Role.EDITOR)
+        self.assertEqual(user.role, Role.EDITOR)
         self.assertTrue(user.check_password("pass12345"))
 
     def test_admin_can_change_role(self):
@@ -64,7 +65,7 @@ class UserManagementTests(APITestCase):
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.editor.refresh_from_db()
-        self.assertEqual(self.editor.role, User.Role.VIEWER)
+        self.assertEqual(self.editor.role, Role.VIEWER)
 
     def test_non_admin_cannot_manage_users(self):
         self.client.force_authenticate(self.editor)
@@ -80,6 +81,14 @@ class UserManagementTests(APITestCase):
         response = self.client.get(reverse("user-me"))
         self.assertEqual(response.data["username"], "editor")
         self.assertEqual(response.data["role"], "editor")
+
+    def test_superuser_gets_admin_role(self):
+        superuser = User.objects.create_superuser(username="root", password="pass12345")
+        self.assertEqual(superuser.role, Role.ADMIN)
+
+    def test_superuser_gets_admin_role(self):
+        superuser = User.objects.create_superuser(username="root", password="pass12345")
+        self.assertEqual(superuser.role, Role.ADMIN)
 
     def test_delete_is_soft(self):
         self.client.force_authenticate(self.admin)

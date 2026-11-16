@@ -5,9 +5,12 @@ from django.urls import reverse
 from rest_framework import status
 from rest_framework.test import APITestCase
 
-from accounts.models import User
+from user.models import User
+from user.choices import Role
 from audit.models import AuditLog
-from documents.models import Document
+from audit.choices import Action
+from documents.models import Document, DocumentShare
+from documents.choices import Status
 
 
 def make_image():
@@ -16,11 +19,13 @@ def make_image():
 
 class AuditLogTests(APITestCase):
     def setUp(self):
-        self.admin = User.objects.create_user(username="admin", password="pass12345", role=User.Role.ADMIN)
-        self.viewer = User.objects.create_user(username="viewer", password="pass12345", role=User.Role.VIEWER)
+        self.admin = User.objects.create_user(username="admin", password="pass12345", role=Role.ADMIN)
+        self.viewer = User.objects.create_user(username="viewer", password="pass12345", role=Role.VIEWER)
         self.document = Document.objects.create(
-            title="contract", file=make_image(), uploaded_by=self.admin, status=Document.Status.READY
+            title="contract", file=make_image(), uploaded_by=self.admin, status=Status.READY
         )
+        # the viewer can only see documents shared with them
+        DocumentShare.objects.create(document=self.document, user=self.viewer, shared_by=self.admin)
 
     def tearDown(self):
         # remove test files from MinIO (soft deleted documents too)
@@ -37,36 +42,44 @@ class AuditLogTests(APITestCase):
         self.client.post(reverse("document-list"), {"title": "new", "file": make_image()}, format="multipart")
 
         log = self.last_log()
-        self.assertEqual(log.action, AuditLog.Action.CREATE)
+        self.assertEqual(log.action, Action.CREATE)
         self.assertEqual(log.user, self.admin)
         self.assertEqual(log.document_title, "new")
 
     def test_update_is_logged(self):
         self.client.force_authenticate(self.admin)
         self.client.patch(reverse("document-detail", args=[self.document.id]), {"title": "changed"})
-        self.assertEqual(self.last_log().action, AuditLog.Action.UPDATE)
+        self.assertEqual(self.last_log().action, Action.UPDATE)
 
     def test_view_is_logged(self):
         self.client.force_authenticate(self.viewer)
         self.client.get(reverse("document-detail", args=[self.document.id]))
 
         log = self.last_log()
-        self.assertEqual(log.action, AuditLog.Action.VIEW)
+        self.assertEqual(log.action, Action.VIEW)
         self.assertEqual(log.user, self.viewer)
 
     def test_download_is_logged(self):
         self.client.force_authenticate(self.viewer)
         self.client.get(reverse("document-download", args=[self.document.id]))
-        self.assertEqual(self.last_log().action, AuditLog.Action.DOWNLOAD)
+        self.assertEqual(self.last_log().action, Action.DOWNLOAD)
 
     def test_log_is_kept_after_delete(self):
         self.client.force_authenticate(self.admin)
         self.client.delete(reverse("document-detail", args=[self.document.id]))
 
         log = self.last_log()
-        self.assertEqual(log.action, AuditLog.Action.DELETE)
+        self.assertEqual(log.action, Action.DELETE)
         self.assertEqual(log.document_id, self.document.id)
         self.assertEqual(log.document_title, "contract")
+
+    def test_share_and_unshare_are_logged(self):
+        self.client.force_authenticate(self.admin)
+        self.client.post(reverse("document-unshare", args=[self.document.id]), {"username": "viewer"})
+        self.assertEqual(self.last_log().action, Action.UNSHARE)
+
+        self.client.post(reverse("document-share", args=[self.document.id]), {"username": "viewer"})
+        self.assertEqual(self.last_log().action, Action.SHARE)
 
     def test_filter_by_action(self):
         self.client.force_authenticate(self.viewer)
@@ -74,7 +87,7 @@ class AuditLogTests(APITestCase):
         self.client.get(reverse("document-download", args=[self.document.id]))
 
         self.client.force_authenticate(self.admin)
-        response = self.client.get(reverse("audit-log-list"), {"action": AuditLog.Action.DOWNLOAD})
+        response = self.client.get(reverse("audit-log-list"), {"action": Action.DOWNLOAD})
         self.assertEqual(response.data["count"], 1)
 
     def test_only_admin_can_read_logs(self):
