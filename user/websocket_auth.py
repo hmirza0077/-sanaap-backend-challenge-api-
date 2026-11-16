@@ -13,23 +13,34 @@ def get_user_from_token(token):
     if not token:
         return AnonymousUser()
     try:
-        access = AccessToken(token)  # checks the signature and the expiry time
+        access = AccessToken(token)
         return User.objects.get(id=access["user_id"])
     except (TokenError, User.DoesNotExist):
         return AnonymousUser()
 
+# Another approach
+# def get_access_token_from_cookie(scope):
+#     from http.cookies import SimpleCookie
+#     headers = dict(scope["headers"])
+#
+#     raw_cookie = headers.get(b"cookie", b"").decode()
+#
+#     cookie = SimpleCookie()
+#     cookie.load(raw_cookie)
+#
+#     access = cookie.get("access_token")
+#
+#     return access.value if access else None
+
 
 class JWTAuthMiddleware:
-    """
-    Browsers cannot send headers on a WebSocket connection,
-    so the JWT access token comes in the URL: /ws/documents/?token=<access>
-    """
-
     def __init__(self, inner):
         self.inner = inner
 
     async def __call__(self, scope, receive, send):
         params = parse_qs(scope["query_string"].decode())
         token = params.get("token", [None])[0]
+        # Instead of 2 line above
+        # token = get_access_token_from_cookie(token)
         scope["user"] = await get_user_from_token(token)
         return await self.inner(scope, receive, send)

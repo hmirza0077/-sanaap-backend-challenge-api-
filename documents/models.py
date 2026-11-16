@@ -26,6 +26,12 @@ class Document(SoftDeleteModel):
 
     class Meta:
         ordering = ["-created_at"]
+        indexes = [
+            models.Index(
+                fields=["-created_at"],
+                name="doc_created_idx",
+            ),
+        ]
 
     def __str__(self):
         return self.title

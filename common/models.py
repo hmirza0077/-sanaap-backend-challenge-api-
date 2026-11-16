@@ -15,7 +15,6 @@ class BaseModel(models.Model):
 
 
 class SoftDeleteModel(BaseModel):
-    """Nothing is really deleted in this project: rows are only marked as deleted."""
 
     is_deleted = models.BooleanField(default=False, db_index=True)
     deleted_at = models.DateTimeField(null=True, blank=True)

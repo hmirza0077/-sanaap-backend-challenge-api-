@@ -3,6 +3,7 @@ from django.http import HttpResponseRedirect
 from drf_spectacular.utils import extend_schema_view, extend_schema
 from rest_framework import status
 from rest_framework.decorators import action
+from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.viewsets import ModelViewSet
 
@@ -62,7 +63,7 @@ from documents.choices import Status
 )
 class DocumentViewSet(ModelViewSet):
     serializer_class = DocumentSerializer
-    permission_classes = [DocumentPermission]
+    permission_classes = [IsAuthenticated, DocumentPermission]
     filterset_class = DocumentFilter
 
     def get_queryset(self):
@@ -74,13 +75,10 @@ class DocumentViewSet(ModelViewSet):
         if user.is_admin_role:
             return queryset
 
-        # Own documents + documents shared with this user. Anything else returns 404,
-        # so a link to another user's document is useless even if it is shared.
         shared_document_ids = DocumentShare.objects.filter(user=user).values("document_id")
         return queryset.filter(Q(uploaded_by=user) | Q(id__in=shared_document_ids))
 
     def perform_create(self, serializer):
-        # the file is stored by the background task, not inside the request
         uploaded_file = serializer.validated_data.pop("file")
         instance = serializer.save(uploaded_by=self.request.user)
         DocumentService(instance).queue_file_storage(uploaded_file)

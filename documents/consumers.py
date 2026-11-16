@@ -9,10 +9,6 @@ class DocumentConsumer(AsyncJsonWebsocketConsumer):
         user = self.scope["user"]
         self.group_name = None
 
-        if not user.is_authenticated:
-            await self.close()
-            return
-
         self.group_name = const.ADMINS_GROUP_NAME if user.is_admin_role else user_group_name(user.id)
         await self.channel_layer.group_add(self.group_name, self.channel_name)
         await self.accept()
